@@ -2,26 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>IoT Tote Management Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Tote Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- TailwindCSS CDN -->
+  <!-- Inter Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <script>
     tailwind.config = {
       theme: {
+        fontFamily: { sans: ["Inter", "sans-serif"] },
         extend: {
           colors: {
-            success: "#16a34a",
-            warning: "#f97316",
-            critical: "#ef4444",
-            info: "#3b82f6",
             cardGreen: "#dcfce7",
-            cardYellow: "#fef3c7",
-            cardRed: "#fee2e2",
             cardBlue: "#dbeafe",
-            cardPurple: "#f3e8ff"
+            cardPurple: "#f3e8ff",
+            critical: "#fee2e2",
+            warning: "#fef3c7"
           }
         }
       }
@@ -29,95 +29,104 @@
   </script>
 </head>
 
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-gray-100 min-h-screen font-sans">
 
-<!-- TOP HEADER -->
-<header class="flex items-center justify-between px-8 pt-6 pb-4 bg-white shadow-sm">
+<!-- HEADER -->
+<header class="flex justify-between items-center px-8 py-6 bg-white shadow">
   <div>
-    <h1 class="text-2xl font-bold text-gray-900">IoT Tote Management</h1>
-    <p class="text-sm text-gray-500">Monitor live tote telemetry & shipping labels</p>
+    <h1 class="text-3xl font-semibold text-gray-900">IoT Tote Dashboard</h1>
+    <p class="text-sm text-gray-500">Live monitoring • API driven • Label control</p>
   </div>
   <button id="refreshBtn"
-    class="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white hover:bg-gray-100 text-sm text-gray-700">
-    ⟳ Refresh
+          class="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800">
+    Refresh
   </button>
 </header>
 
-<main class="px-8 pb-10 space-y-6 mt-4">
+<main class="px-8 py-6 space-y-6">
 
   <!-- KPI CARDS -->
-  <section id="kpiSection" class="grid grid-cols-1 md:grid-cols-5 gap-4"></section>
+  <section id="kpiSection"
+           class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
+  </section>
 
-  <!-- SEARCH + FILTERS -->
-  <section id="filterSection" class="bg-white rounded-2xl shadow px-4 py-3 flex flex-wrap items-center gap-4"></section>
+  <!-- FILTERS (simple for now, can expand later) -->
+  <section id="filterSection"
+           class="bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4">
+    <input id="searchInput"
+           type="text"
+           placeholder="Search by ID, name, or location..."
+           class="flex-1 px-4 py-2 rounded-xl border focus:ring-2 focus:ring-indigo-500">
+  </section>
 
   <!-- TOTE CARDS -->
-  <section id="toteCards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5"></section>
+  <section id="toteCards"
+           class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+  </section>
 
 </main>
 
 <!-- MODAL BACKDROP -->
-<div id="labelModalBackdrop"
-     class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
-     onclick="closeLabelModal()"></div>
+<div id="modalBackdrop"
+     class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"></div>
 
 <!-- LABEL MODAL -->
 <div id="labelModal"
-     class="hidden fixed z-50 inset-0 flex items-center justify-center">
-  <div class="bg-white rounded-2xl w-[420px] shadow-2xl p-6 relative border border-gray-200">
+     class="hidden fixed z-50 inset-0 flex items-center justify-center px-4">
 
-    <!-- Close -->
-    <button onclick="closeLabelModal()"
-            class="absolute top-3 right-3 text-gray-400 hover:text-gray-600">✕</button>
+  <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative border border-gray-200">
 
-    <!-- Title -->
-    <h2 id="modalTitle" class="text-lg font-semibold mb-4">Barcode Management</h2>
+    <button onclick="closeModal()"
+            class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl">✕</button>
 
-    <!-- Current label -->
+    <h2 id="modalTitle" class="text-xl font-semibold mb-4">Label</h2>
+
+    <!-- CURRENT LABEL -->
     <div class="mb-6">
-      <h3 class="text-sm font-medium text-gray-700 mb-2">Current Barcode / QR Label</h3>
-      <div class="border rounded-xl p-4 bg-gray-50 flex flex-col items-center w-full">
-        <div class="w-full h-24 flex items-center justify-center bg-white rounded-lg mb-3 border">
-          <img id="currentBarcodeImg"
-               src=""
-               alt="Barcode Image"
-               class="max-h-20 object-contain"
-               onerror="this.style.display='none'; this.parentElement.textContent='No label uploaded yet';">
-        </div>
-        <a id="downloadBarcodeBtn"
-           href="#"
-           class="px-3 py-1.5 text-xs rounded-lg border bg-white hover:bg-gray-100">
-          ⬇ Download
-        </a>
+      <h3 class="text-sm font-medium mb-2 text-gray-700">Current Label</h3>
+
+      <div id="previewContainer"
+           class="w-full h-32 bg-gray-100 border rounded-lg flex flex-col items-center justify-center">
+        <img id="labelPreview"
+             src=""
+             class="max-h-24 object-contain mb-1">
+        <p id="noLabelMessage"
+           class="hidden text-xs text-gray-500">
+          No label available
+        </p>
       </div>
+
+      <a id="downloadBtn"
+         href="#"
+         class="inline-block mt-2 text-xs underline text-blue-700">
+        Download PNG
+      </a>
     </div>
 
-    <!-- Upload -->
+    <!-- UPLOAD NEW LABEL -->
     <div class="mb-6">
-      <h3 class="text-sm font-medium text-gray-700 mb-2">Replace Barcode</h3>
-      <label for="barcodeUpload"
-             class="cursor-pointer border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-purple-50 text-purple-700 hover:bg-purple-100 transition">
-        <div class="text-4xl mb-2">🟣</div>
-        <p class="text-sm font-medium">Select a label image to upload</p>
-        <p class="text-xs text-gray-500">PNG, JPG, GIF (max 5MB)</p>
-
-        <div class="mt-4 px-4 py-2 bg-white rounded-lg shadow text-sm">Choose File</div>
-      </label>
-      <input id="barcodeUpload" type="file" accept="image/*" class="hidden">
+      <h3 class="text-sm font-medium mb-2 text-gray-700">Upload New Label</h3>
+      <input id="labelFile"
+             type="file"
+             accept="image/*"
+             class="w-full border rounded-lg p-2 bg-white">
     </div>
 
-    <!-- Modal Actions -->
-    <div class="flex justify-end gap-2">
-      <button onclick="closeLabelModal()"
-              class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm">Cancel</button>
+    <div class="flex justify-end gap-3">
+      <button onclick="closeModal()"
+              class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">
+        Cancel
+      </button>
       <button id="uploadBtn"
-              class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm">Upload</button>
+              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+        Upload
+      </button>
     </div>
 
   </div>
 </div>
 
-<!-- Load JS Logic -->
+<!-- FRONTEND LOGIC -->
 <script src="/static/js/dashboard.js"></script>
 
 </body>

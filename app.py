@@ -1,79 +1,126 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file, abort
 import os
-import time
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-# Store live IoT data here
-live_data = {}
+# Store live tote data
+TOTES = {}
+
+LABEL_DIR = os.path.join(app.root_path, "labels")
+os.makedirs(LABEL_DIR, exist_ok=True)
+
+
+# ---------------------------
+# HELPER: decide tote status
+# ---------------------------
+def compute_status(temp, humidity, lux):
+    try:
+        if temp is not None:
+            t = float(temp)
+            if t < -5 or t > 60:
+                return "critical"
+            if t < 0 or t > 25:
+                return "warning"
+
+        if humidity is not None:
+            h = float(humidity)
+            if h > 90:
+                return "critical"
+            if h > 70:
+                return "warning"
+
+        if lux is not None:
+            lx = float(lux)
+            if lx > 1000:
+                return "critical"
+            if lx >= 300:
+                return "warning"
+
+        return "normal"
+
+    except:
+        return "normal"
 
 
 @app.route("/")
-def home():
+def dashboard():
     return render_template("dashboard.html")
 
 
-# -------------------------------
-# LABEL IMAGE
-# -------------------------------
-@app.route("/label/<tote_png>")
-def label_image(tote_png):
-    labels_dir = os.path.join(app.static_folder, "labels")
-    full_path = os.path.join(labels_dir, tote_png)
+# ---------------------------
+# API: IoT device POST update
+# ---------------------------
+@app.route("/api/iot/update", methods=["POST"])
+def iot_update():
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"error": "invalid JSON"}), 400
 
-    # Serve uploaded label or 404
-    if os.path.exists(full_path):
-        return send_from_directory(labels_dir, tote_png)
-    return ("", 404)
+    tote_id = data.get("tote_id") or data.get("id")
+    if not tote_id:
+        return jsonify({"error": "tote_id is required"}), 400
+
+    # Extract values
+    temp = data.get("temperature")
+    humidity = data.get("humidity")
+    lux = data.get("lux")
+
+    loc_block = data.get("location", {})
+    lat = loc_block.get("lat")
+    lon = loc_block.get("lon")
+    location_label = data.get("location_label") or "Unknown"
+
+    # Compute server-side status
+    status = compute_status(temp, humidity, lux)
+
+    TOTES[tote_id] = {
+        "id": tote_id,
+        "name": tote_id,
+        "temp": temp,
+        "humidity": humidity,
+        "lux": lux,
+        "status": status,
+        "location": location_label,
+        "coords": f"{lat},{lon}" if lat and lon else ""
+    }
+
+    return jsonify({"ok": True})
 
 
-# -------------------------------
-# UPLOAD LABEL
-# -------------------------------
+# ---------------------------
+# API: Dashboard GET live data
+# ---------------------------
+@app.route("/iot/live")
+def live():
+    return jsonify(TOTES)
+
+
+# ---------------------------
+# LABEL UPLOAD
+# ---------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
     if "file" not in request.files:
-        return {"message": "No file in request"}, 400
+        return jsonify({"error": "file missing"}), 400
 
-    file = request.files["file"]
-    if file.filename == "":
-        return {"message": "No file selected"}, 400
-
-    os.makedirs("static/labels", exist_ok=True)
-    file.save(f"static/labels/{tote_id}.png")
-
-    return {"message": "Upload successful"}
+    f = request.files["file"]
+    filename = secure_filename(f"{tote_id}.png")
+    path = os.path.join(LABEL_DIR, filename)
+    f.save(path)
+    return jsonify({"ok": True})
 
 
-# -------------------------------
-# IOT UPDATE (DEVICE → SERVER)
-# -------------------------------
-@app.route("/iot/update", methods=["POST"])
-def iot_update():
-    data = request.json or {}
-    tote_id = data.get("tote_id")
+# ---------------------------
+# LABEL FETCH
+# ---------------------------
+@app.route("/label/<tote_id>.png")
+def get_label(tote_id):
+    path = os.path.join(LABEL_DIR, f"{tote_id}.png")
+    if not os.path.exists(path):
+        abort(404)
 
-    if not tote_id:
-        return {"error": "missing tote_id"}, 400
-
-    live_data[tote_id] = {
-        "temperature": data.get("temperature"),
-        "lux": data.get("lux"),
-        "battery": data.get("battery", 100),
-        "status": data.get("status", "normal"),
-        "location": data.get("location", {}),
-        "timestamp": data.get("timestamp", time.time())
-    }
-
-    return {"message": "OK"}
-
-
-# -------------------------------
-# DASHBOARD REQUESTS LIVE DATA
-# -------------------------------
-@app.route("/iot/live")
-def iot_live():
-    return jsonify(live_data)
+    return send_file(path, mimetype="image/png")
 
 
 if __name__ == "__main__":
