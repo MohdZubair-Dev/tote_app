@@ -28,6 +28,7 @@
     }
   </script>
 </head>
+
 <body class="bg-gray-50 min-h-screen">
 
 <!-- TOP HEADER -->
@@ -36,8 +37,7 @@
     <h1 class="text-2xl font-bold text-gray-900">IoT Tote Management</h1>
     <p class="text-sm text-gray-500">Monitor live tote telemetry & shipping labels</p>
   </div>
-  <button
-    onclick="refreshData()"
+  <button id="refreshBtn"
     class="flex items-center gap-2 px-4 py-2 rounded-xl border bg-white hover:bg-gray-100 text-sm text-gray-700">
     ⟳ Refresh
   </button>
@@ -46,64 +46,12 @@
 <main class="px-8 pb-10 space-y-6 mt-4">
 
   <!-- KPI CARDS -->
-  <section class="grid grid-cols-1 md:grid-cols-5 gap-4">
-    <div class="bg-white rounded-2xl shadow p-4 flex flex-col">
-      <span class="text-xs text-gray-500 mb-1">Total Totes</span>
-      <span id="kpiTotal" class="text-2xl font-semibold">0</span>
-    </div>
-    <div class="bg-white rounded-2xl shadow p-4 flex flex-col">
-      <span class="text-xs text-gray-500 mb-1">Normal</span>
-      <span id="kpiNormal" class="text-2xl font-semibold text-success">0</span>
-    </div>
-    <div class="bg-white rounded-2xl shadow p-4 flex flex-col">
-      <span class="text-xs text-gray-500 mb-1">Warning</span>
-      <span id="kpiWarning" class="text-2xl font-semibold text-warning">0</span>
-    </div>
-    <div class="bg-white rounded-2xl shadow p-4 flex flex-col">
-      <span class="text-xs text-gray-500 mb-1">Critical</span>
-      <span id="kpiCritical" class="text-2xl font-semibold text-critical">0</span>
-    </div>
-    <div class="bg-white rounded-2xl shadow p-4 flex flex-col">
-      <span class="text-xs text-gray-500 mb-1">Lux Active</span>
-      <span id="kpiLuxActive" class="text-2xl font-semibold text-info">0</span>
-    </div>
-  </section>
+  <section id="kpiSection" class="grid grid-cols-1 md:grid-cols-5 gap-4"></section>
 
   <!-- SEARCH + FILTERS -->
-  <section class="bg-white rounded-2xl shadow px-4 py-3 flex flex-wrap items-center gap-4">
-    <div class="flex-1 min-w-[220px]">
-      <input
-        id="searchInput"
-        type="text"
-        placeholder="Search by tote name, ID, or location..."
-        class="w-full px-4 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-      />
-    </div>
-    <div class="flex items-center gap-2">
-      <button id="filter-all"
-        onclick="setFilter('all')"
-        class="px-3 py-1.5 rounded-full border text-xs bg-gray-900 text-white">
-        All
-      </button>
-      <button id="filter-normal"
-        onclick="setFilter('normal')"
-        class="px-3 py-1.5 rounded-full border text-xs text-success border-success/40 bg-white hover:bg-success/10">
-        Normal
-      </button>
-      <button id="filter-warning"
-        onclick="setFilter('warning')"
-        class="px-3 py-1.5 rounded-full border text-xs text-warning border-warning/40 bg-white hover:bg-warning/10">
-        Warning
-      </button>
-      <button id="filter-critical"
-        onclick="setFilter('critical')"
-        class="px-3 py-1.5 rounded-full border text-xs text-critical border-critical/40 bg-white hover:bg-critical/10">
-        Critical
-      </button>
-    </div>
-  </section>
+  <section id="filterSection" class="bg-white rounded-2xl shadow px-4 py-3 flex flex-wrap items-center gap-4"></section>
 
-  <!-- TOTE CARDS GRID -->
+  <!-- TOTE CARDS -->
   <section id="toteCards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5"></section>
 
 </main>
@@ -117,11 +65,10 @@
 <div id="labelModal"
      class="hidden fixed z-50 inset-0 flex items-center justify-center">
   <div class="bg-white rounded-2xl w-[420px] shadow-2xl p-6 relative border border-gray-200">
+
     <!-- Close -->
     <button onclick="closeLabelModal()"
-            class="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
-      ✕
-    </button>
+            class="absolute top-3 right-3 text-gray-400 hover:text-gray-600">✕</button>
 
     <!-- Title -->
     <h2 id="modalTitle" class="text-lg font-semibold mb-4">Barcode Management</h2>
@@ -137,9 +84,6 @@
                class="max-h-20 object-contain"
                onerror="this.style.display='none'; this.parentElement.textContent='No label uploaded yet';">
         </div>
-        <div id="barcodeDate" class="text-xs text-gray-500 mb-2">
-          Uploaded: --/--/----
-        </div>
         <a id="downloadBarcodeBtn"
            href="#"
            class="px-3 py-1.5 text-xs rounded-lg border bg-white hover:bg-gray-100">
@@ -148,17 +92,16 @@
       </div>
     </div>
 
-    <!-- Upload new label -->
+    <!-- Upload -->
     <div class="mb-6">
-      <h3 class="text-sm font-medium text-gray-700 mb-2">Replace Barcode / QR Label</h3>
+      <h3 class="text-sm font-medium text-gray-700 mb-2">Replace Barcode</h3>
       <label for="barcodeUpload"
              class="cursor-pointer border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center bg-purple-50 text-purple-700 hover:bg-purple-100 transition">
         <div class="text-4xl mb-2">🟣</div>
         <p class="text-sm font-medium">Select a label image to upload</p>
-        <p class="text-xs text-gray-500">Supports PNG, JPG, GIF (max 5MB)</p>
-        <div class="mt-4 px-4 py-2 bg-white rounded-lg shadow text-sm">
-          Choose File
-        </div>
+        <p class="text-xs text-gray-500">PNG, JPG, GIF (max 5MB)</p>
+
+        <div class="mt-4 px-4 py-2 bg-white rounded-lg shadow text-sm">Choose File</div>
       </label>
       <input id="barcodeUpload" type="file" accept="image/*" class="hidden">
     </div>
@@ -166,320 +109,16 @@
     <!-- Modal Actions -->
     <div class="flex justify-end gap-2">
       <button onclick="closeLabelModal()"
-              class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm">
-        Cancel
-      </button>
-      <button onclick="uploadNewBarcode()"
-              class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm">
-        Upload
-      </button>
+              class="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm">Cancel</button>
+      <button id="uploadBtn"
+              class="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm">Upload</button>
     </div>
+
   </div>
 </div>
 
-<script>
-  // ------------ BASE DEVICE METADATA (STATIC) ------------
-  const baseDevices = [
-    {
-      id: "TOTE001",
-      name: "Tote001",
-      status: "normal",
-      temp: 0,
-      tempRange: "-20° – -15°C",
-      luxStatus: "CLOSE (OFF)",
-      luxActive: false,
-      lux: 0,
-      location: "Warehouse A – Section 1",
-      coords: "40.7128, -74.0060"
-    },
-    {
-      id: "TOTE002",
-      name: "Tote002",
-      status: "warning",
-      temp: 0,
-      tempRange: "18° – 25°C",
-      luxStatus: "OPEN (ON)",
-      luxActive: true,
-      lux: 0,
-      location: "Warehouse B – Section 2",
-      coords: "40.7589, -73.9851"
-    },
-    {
-      id: "TOTE003",
-      name: "Tote003",
-      status: "critical",
-      temp: 0,
-      tempRange: "70° – 80°C",
-      luxStatus: "CLOSE (OFF)",
-      luxActive: false,
-      lux: 0,
-      location: "Warehouse C – Section 3",
-      coords: "40.6892, -74.0445"
-    },
-    {
-      id: "TOTE004",
-      name: "Tote004",
-      status: "normal",
-      temp: 0,
-      tempRange: "18° – 25°C",
-      luxStatus: "OPEN (ON)",
-      luxActive: true,
-      lux: 0,
-      location: "Warehouse D – Section 4",
-      coords: "40.7505, -73.9934"
-    }
-  ];
-
-  let devices = JSON.parse(JSON.stringify(baseDevices));
-  let activeFilter = "all";
-  let activeToteId = null;
-  let selectedFile = null;
-
-  // ------------ KPI UPDATE ------------
-  function updateKPIs(list) {
-    const total = list.length;
-    const normal = list.filter(d => d.status === "normal").length;
-    const warning = list.filter(d => d.status === "warning").length;
-    const critical = list.filter(d => d.status === "critical").length;
-    const luxActive = list.filter(d => d.luxActive).length;
-
-    document.getElementById("kpiTotal").innerText = total;
-    document.getElementById("kpiNormal").innerText = normal;
-    document.getElementById("kpiWarning").innerText = warning;
-    document.getElementById("kpiCritical").innerText = critical;
-    document.getElementById("kpiLuxActive").innerText = luxActive;
-  }
-
-  // ------------ FILTER + SEARCH ------------
-  function getFilteredDevices() {
-    const q = document.getElementById("searchInput").value.toLowerCase().trim();
-    return devices.filter(d => {
-      const matchesFilter = (activeFilter === "all") ? true : d.status === activeFilter;
-      const matchesQuery =
-        !q ||
-        d.id.toLowerCase().includes(q) ||
-        d.name.toLowerCase().includes(q) ||
-        d.location.toLowerCase().includes(q);
-      return matchesFilter && matchesQuery;
-    });
-  }
-
-  function setFilter(filter) {
-    activeFilter = filter;
-    ["all", "normal", "warning", "critical"].forEach(key => {
-      const el = document.getElementById("filter-" + key);
-      if (!el) return;
-      if (key === filter) {
-        el.classList.add("bg-gray-900", "text-white");
-      } else {
-        el.classList.remove("bg-gray-900", "text-white");
-      }
-    });
-    renderCards();
-  }
-
-  document.getElementById("searchInput").addEventListener("input", renderCards);
-
-  // ------------ CARD STYLE HELPERS ------------
-  function statusCardColors(status) {
-    if (status === "normal") return "border-cardGreen bg-cardGreen/40";
-    if (status === "warning") return "border-cardYellow bg-cardYellow/40";
-    if (status === "critical") return "border-cardRed bg-cardRed/40";
-    return "border-gray-200 bg-gray-50";
-  }
-
-  function tempCardColor(status) {
-    if (status === "normal") return "bg-cardGreen";
-    if (status === "warning") return "bg-cardYellow";
-    if (status === "critical") return "bg-cardRed";
-    return "bg-gray-100";
-  }
-
-  // ------------ RENDER CARDS ------------
-  function renderCards() {
-    const list = getFilteredDevices();
-    updateKPIs(list);
-
-    const container = document.getElementById("toteCards");
-    container.innerHTML = "";
-
-    list.forEach(d => {
-      const [lat, lon] = (d.coords || "").split(",").map(x => x.trim());
-      const tempValue = (typeof d.temp === "number" && d.temp.toFixed)
-        ? d.temp.toFixed(1)
-        : d.temp;
-
-      container.innerHTML += `
-        <article class="rounded-2xl bg-white shadow-sm border ${statusCardColors(d.status)} overflow-hidden">
-          <div class="p-4 space-y-3">
-            <!-- Header -->
-            <header class="flex justify-between items-start">
-              <div>
-                <h2 class="font-semibold text-gray-900">${d.name}</h2>
-                <p class="text-xs text-gray-500">Live updated</p>
-              </div>
-              <span class="text-[10px] px-2 py-1 rounded-full border bg-white text-gray-600">
-                ${d.id}
-              </span>
-            </header>
-
-            <!-- Temperature -->
-            <section class="rounded-xl p-3 ${tempCardColor(d.status)} flex flex-col gap-1">
-              <div class="flex justify-between text-xs text-gray-700">
-                <span>🌡 Temperature</span>
-                <span>${d.status === "normal" ? "Normal" : d.status === "warning" ? "Warning" : "Critical"}</span>
-              </div>
-              <div class="text-2xl font-semibold text-gray-900">${tempValue}°C</div>
-              <div class="text-[11px] text-gray-700">Range: ${d.tempRange}</div>
-            </section>
-
-            <!-- Lux -->
-            <section class="rounded-xl p-3 bg-cardBlue flex justify-between items-center">
-              <div>
-                <div class="text-xs text-gray-600">💡 Lux</div>
-                <div class="mt-1 text-xs text-gray-700">${d.lux} lx</div>
-              </div>
-              <span class="text-[11px] px-3 py-1 rounded-full 
-                           ${d.luxActive ? "bg-black text-white" : "bg-gray-200 text-gray-600"}">
-                ${d.luxStatus}
-              </span>
-            </section>
-
-            <!-- Location -->
-            <section class="rounded-xl p-3 bg-gray-50 flex justify-between items-start">
-              <div>
-                <div class="text-xs text-gray-600">📍 Location</div>
-                <div class="text-xs text-gray-800">${d.location}</div>
-                <div class="text-[11px] text-gray-500 mt-0.5">${d.coords}</div>
-              </div>
-              ${
-                (lat && lon)
-                  ? `<a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank"
-                       class="mt-1 px-3 py-1 text-[11px] rounded-lg border bg-white hover:bg-gray-100">
-                       Open
-                     </a>`
-                  : ""
-              }
-            </section>
-
-            <!-- Barcode Label -->
-            <section class="rounded-xl p-3 bg-cardPurple space-y-2">
-              <div class="flex justify-between items-center text-xs text-purple-800">
-                <span>🏷 Barcode Label</span>
-                <span class="text-[11px]">View / Upload</span>
-              </div>
-              <div class="bg-white rounded-lg border h-14 flex items-center justify-center text-[11px] text-gray-500">
-                <img src="/label/${d.id}.png"
-                     alt="Barcode Image"
-                     class="max-h-10 object-contain"
-                     onerror="this.style.display='none'; this.parentElement.textContent='No label uploaded yet';">
-              </div>
-              <div class="flex justify-end gap-2">
-                <button onclick="openLabelModal('${d.id}')"
-                        class="px-3 py-1.5 rounded-lg bg-white text-[11px] border border-purple-300 hover:bg-purple-50">
-                  View / Upload
-                </button>
-              </div>
-            </section>
-          </div>
-        </article>
-      `;
-    });
-  }
-
-  // ------------ MODAL HANDLERS ------------
-  function openLabelModal(toteId) {
-    activeToteId = toteId;
-    document.getElementById("modalTitle").innerText = "Barcode Management – " + toteId;
-    document.getElementById("currentBarcodeImg").src = "/label/" + toteId + ".png?" + Date.now();
-    document.getElementById("downloadBarcodeBtn").href = "/label/" + toteId + ".png";
-    document.getElementById("labelModal").classList.remove("hidden");
-    document.getElementById("labelModalBackdrop").classList.remove("hidden");
-  }
-
-  function closeLabelModal() {
-    document.getElementById("labelModal").classList.add("hidden");
-    document.getElementById("labelModalBackdrop").classList.add("hidden");
-    selectedFile = null;
-    document.getElementById("barcodeUpload").value = "";
-  }
-
-  document.getElementById("barcodeUpload").addEventListener("change", (e) => {
-    selectedFile = e.target.files[0];
-  });
-
-  function uploadNewBarcode() {
-    if (!activeToteId) {
-      alert("No tote selected.");
-      return;
-    }
-    if (!selectedFile) {
-      alert("Please select a file first.");
-      return;
-    }
-    if (selectedFile.size > 5 * 1024 * 1024) {
-      alert("File too large (max 5 MB).");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    fetch("/upload_label/" + activeToteId, {
-      method: "POST",
-      body: formData
-    })
-      .then(res => res.json())
-      .then(() => {
-        alert("Upload successful!");
-        closeLabelModal();
-        renderCards();
-      })
-      .catch(err => {
-        console.error(err);
-        alert("Upload failed.");
-      });
-  }
-
-  // ------------ LIVE DATA POLLING ------------
-  async function fetchLiveData() {
-    try {
-      const res = await fetch("/iot/live");
-      const data = await res.json();
-
-      // Start from baseDevices, then apply live readings
-      devices = JSON.parse(JSON.stringify(baseDevices));
-
-      devices.forEach(d => {
-        const live = data[d.id];
-        if (live) {
-          if (typeof live.temperature === "number") d.temp = live.temperature;
-          if (typeof live.lux === "number") d.lux = live.lux;
-          if (typeof live.battery === "number") d.battery = live.battery;
-          d.status = live.status || d.status;
-          if (live.location && live.location.lat != null && live.location.lon != null) {
-            d.coords = live.location.lat + ", " + live.location.lon;
-          }
-        }
-      });
-
-      renderCards();
-    } catch (err) {
-      console.error("Error fetching live data:", err);
-    }
-  }
-
-  function refreshData() {
-    fetchLiveData();
-  }
-
-  // Poll every 5s
-  setInterval(fetchLiveData, 5000);
-
-  // Initial setup
-  setFilter("all");   // sets filter + renders
-  fetchLiveData();    // then override with live IoT data
-</script>
+<!-- Load JS Logic -->
+<script src="/static/js/dashboard.js"></script>
 
 </body>
 </html>
