@@ -6,7 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <!-- Inter Font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
 
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -27,6 +30,19 @@
       }
     }
   </script>
+
+  <!-- Leaflet CSS & JS for Map -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin="">
+  </script>
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans">
@@ -35,8 +51,11 @@
 <header class="flex justify-between items-center px-8 py-6 bg-white shadow">
   <div>
     <h1 class="text-3xl font-semibold text-gray-900">IoT Tote Dashboard</h1>
-    <p class="text-sm text-gray-500">Live monitoring • API driven • Label control</p>
+    <p class="text-sm text-gray-500">
+      Live monitoring • API driven • Label control • Map tracking
+    </p>
   </div>
+
   <button id="refreshBtn"
           class="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800">
     Refresh
@@ -50,7 +69,24 @@
            class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
   </section>
 
-  <!-- FILTERS (simple for now, can expand later) -->
+  <!-- MAP VIEW -->
+  <section id="mapSection"
+           class="bg-white rounded-2xl shadow p-4">
+    <div class="flex justify-between items-center mb-3">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-900">Tote Locations</h2>
+        <p class="text-xs text-gray-500">Live map view of all active totes</p>
+      </div>
+      <p class="text-[0.65rem] text-gray-400">
+        Drag, zoom and click markers for more details
+      </p>
+    </div>
+    <div id="toteMap"
+         class="w-full h-80 md:h-96 rounded-2xl border border-gray-200 overflow-hidden">
+    </div>
+  </section>
+
+  <!-- FILTERS -->
   <section id="filterSection"
            class="bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4">
     <input id="searchInput"
@@ -66,9 +102,9 @@
 
 </main>
 
-<!-- MODAL BACKDROP -->
+<!-- BACKDROP FOR MODAL -->
 <div id="modalBackdrop"
-     class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"></div>
+     class="hidden fixed inset-0 bg-black bg-opacity-40 z-40"></div>
 
 <!-- LABEL MODAL -->
 <div id="labelModal"
@@ -89,9 +125,9 @@
            class="w-full h-32 bg-gray-100 border rounded-lg flex flex-col items-center justify-center">
         <img id="labelPreview"
              src=""
-             class="max-h-24 object-contain mb-1">
+             class="max-h-24 object-contain mb-1 hidden">
         <p id="noLabelMessage"
-           class="hidden text-xs text-gray-500">
+           class="text-xs text-gray-500">
           No label available
         </p>
       </div>
@@ -99,26 +135,21 @@
       <a id="downloadBtn"
          href="#"
          class="inline-block mt-2 text-xs underline text-blue-700">
-        Download PNG
+        Download current label
       </a>
     </div>
 
     <!-- UPLOAD NEW LABEL -->
-    <div class="mb-6">
-      <h3 class="text-sm font-medium mb-2 text-gray-700">Upload New Label</h3>
+    <div class="space-y-3">
+      <label class="text-sm font-medium text-gray-700">
+        Upload new PNG label
+      </label>
       <input id="labelFile"
              type="file"
-             accept="image/*"
-             class="w-full border rounded-lg p-2 bg-white">
-    </div>
-
-    <div class="flex justify-end gap-3">
-      <button onclick="closeModal()"
-              class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">
-        Cancel
-      </button>
+             accept="image/png"
+             class="w-full text-sm">
       <button id="uploadBtn"
-              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 w-full">
         Upload
       </button>
     </div>

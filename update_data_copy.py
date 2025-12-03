@@ -2,11 +2,12 @@ import requests
 import random
 import time
 
+#API = "https://tote-app.onrender.com/api/iot/update"
 API = "http://127.0.0.1:5000/api/iot/update"
 TOTE_ID = "TOTE001"
 
 def random_payload():
-    temperature = round(random.uniform(-10, 80), 1)
+    temperature = round(random.uniform(21, 23), 1)
     humidity    = round(random.uniform(20, 95), 1)
     lux         = random.randint(0, 1200)
 

@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-# Store live tote data
+# Store live tote data in memory (latest snapshot per tote)
 TOTES = {}
 
 LABEL_DIR = os.path.join(app.root_path, "labels")
@@ -15,6 +15,10 @@ os.makedirs(LABEL_DIR, exist_ok=True)
 # HELPER: decide tote status
 # ---------------------------
 def compute_status(temp, humidity, lux):
+    """
+    Simple server-side safeguard so even if device doesn't send a status,
+    we can derive one from the sensor values.
+    """
     try:
         if temp is not None:
             t = float(temp)
@@ -39,10 +43,13 @@ def compute_status(temp, humidity, lux):
 
         return "normal"
 
-    except:
+    except Exception:
         return "normal"
 
 
+# ---------------------------
+# DASHBOARD UI
+# ---------------------------
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html")
@@ -53,6 +60,24 @@ def dashboard():
 # ---------------------------
 @app.route("/api/iot/update", methods=["POST"])
 def iot_update():
+    """
+    This is the ONLY API your tote/device needs to call.
+    Example JSON from device / update_data.py:
+
+    {
+      "tote_id": "TOTE001",
+      "temperature": 23.5,
+      "humidity": 55,
+      "lux": 120,
+      "status": "normal",   # optional – server can compute
+      "location": {
+        "lat": 12.9716,
+        "lon": 77.5946
+      },
+      "location_label": "Bengaluru Warehouse A",  # optional
+      "timestamp": 1733202321
+    }
+    """
     data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "invalid JSON"}), 400
@@ -66,14 +91,18 @@ def iot_update():
     humidity = data.get("humidity")
     lux = data.get("lux")
 
-    loc_block = data.get("location", {})
+    # Location block from device
+    loc_block = data.get("location", {}) or {}
     lat = loc_block.get("lat")
     lon = loc_block.get("lon")
+
+    # Optional human-friendly label from device
     location_label = data.get("location_label") or "Unknown"
 
-    # Compute server-side status
-    status = compute_status(temp, humidity, lux)
+    # Device may send its own status; otherwise compute
+    status = data.get("status") or compute_status(temp, humidity, lux)
 
+    # Build one consolidated record used by the dashboard + map
     TOTES[tote_id] = {
         "id": tote_id,
         "name": tote_id,
@@ -82,7 +111,8 @@ def iot_update():
         "lux": lux,
         "status": status,
         "location": location_label,
-        "coords": f"{lat},{lon}" if lat and lon else ""
+        # map uses this "lat,lon" string
+        "coords": f"{lat},{lon}" if lat is not None and lon is not None else ""
     }
 
     return jsonify({"ok": True})
@@ -93,6 +123,12 @@ def iot_update():
 # ---------------------------
 @app.route("/iot/live")
 def live():
+    """
+    Used by dashboard.js to render:
+      - KPI cards
+      - Tote cards
+      - Map markers
+    """
     return jsonify(TOTES)
 
 
@@ -124,4 +160,5 @@ def get_label(tote_id):
 
 
 if __name__ == "__main__":
+    # For local testing
     app.run(debug=True)
