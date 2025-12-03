@@ -16,10 +16,6 @@ os.makedirs(LABEL_DIR, exist_ok=True)
 # HELPER: decide tote status
 # ---------------------------
 def compute_status(temp, humidity, lux):
-    """
-    Simple server-side safeguard so even if device doesn't send a status,
-    we can derive one from the sensor values.
-    """
     try:
         if temp is not None:
             t = float(temp)
@@ -43,7 +39,6 @@ def compute_status(temp, humidity, lux):
                 return "warning"
 
         return "normal"
-
     except Exception:
         return "normal"
 
@@ -61,24 +56,6 @@ def dashboard():
 # ---------------------------
 @app.route("/api/iot/update", methods=["POST"])
 def iot_update():
-    """
-    This is the ONLY API your tote/device needs to call.
-    Example JSON from device / update_data.py:
-
-    {
-      "tote_id": "TOTE001",
-      "temperature": 23.5,
-      "humidity": 55,
-      "lux": 120,
-      "status": "normal",   # optional – server can compute
-      "location": {
-        "lat": 12.9716,
-        "lon": 77.5946
-      },
-      "location_label": "Bengaluru Warehouse A",  # optional
-      "timestamp": 1733202321
-    }
-    """
     data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "invalid JSON"}), 400
@@ -87,23 +64,17 @@ def iot_update():
     if not tote_id:
         return jsonify({"error": "tote_id is required"}), 400
 
-    # Extract values
     temp = data.get("temperature")
     humidity = data.get("humidity")
     lux = data.get("lux")
 
-    # Location block from device
     loc_block = data.get("location", {}) or {}
     lat = loc_block.get("lat")
     lon = loc_block.get("lon")
 
-    # Optional human-friendly label from device
     location_label = data.get("location_label") or "Unknown"
-
-    # Device may send its own status; otherwise compute
     status = data.get("status") or compute_status(temp, humidity, lux)
 
-    # Build one consolidated record used by the dashboard + map
     TOTES[tote_id] = {
         "id": tote_id,
         "name": tote_id,
@@ -112,7 +83,6 @@ def iot_update():
         "lux": lux,
         "status": status,
         "location": location_label,
-        # map uses this "lat,lon" string
         "coords": f"{lat},{lon}" if lat is not None and lon is not None else ""
     }
 
@@ -124,24 +94,19 @@ def iot_update():
 # ---------------------------
 @app.route("/iot/live")
 def live():
-    """
-    Used by dashboard.js to render:
-      - KPI cards
-      - Tote cards
-      - Map markers
-    """
     return jsonify(TOTES)
 
 
 # ---------------------------
-# LABEL UPLOAD
+# LABEL UPLOAD  (UPDATED!)
 # ---------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
-    """Upload a label image for a tote.
+    """
+    Upload a label image for a tote.
 
-    - Saves a PNG version for the web dashboard at /label/<tote_id>.png
-    - Saves a BMP version for ESP32 clients at   /label_raw/<tote_id>.bmp
+    - Saves a PNG version for dashboard
+    - Saves a *1-bit monochrome BMP* version for ESP32 e-ink display
     """
     if "file" not in request.files:
         return jsonify({"error": "file missing"}), 400
@@ -152,21 +117,31 @@ def upload_label(tote_id):
 
     filename_png = secure_filename(f"{tote_id}.png")
     filename_bmp = secure_filename(f"{tote_id}.bmp")
+
     path_png = os.path.join(LABEL_DIR, filename_png)
     path_bmp = os.path.join(LABEL_DIR, filename_bmp)
 
     try:
-        # Normalize and convert to RGB so we have a clean base image
+        # Load original upload
         img = Image.open(file.stream)
-        img = img.convert("RGB")
 
-        # Save PNG for the dashboard / browser
-        img.save(path_png, format="PNG")
+        # Save PNG for dashboard (full quality)
+        img_rgb = img.convert("RGB")
+        img_rgb.save(path_png, format="PNG")
 
-        # Save BMP (uncompressed) for ESP32 side to decode easily
-        img.save(path_bmp, format="BMP")
+        # ----- 1-BIT BMP FOR ESP32 -----
+        # Convert image to black/white
+        img_bw = img.convert("1")
+
+        # Resize to 400x300 (4.2" V2 resolution)
+        img_bw = img_bw.resize((400, 300))
+
+        # Save as MONOCHROME BMP (1-bit)
+        img_bw.save(path_bmp, format="BMP")
+
     except Exception as exc:
-        # Fallback: just save what we got as PNG
+        print("Error converting label:", exc)
+        # Save input for debugging
         file.seek(0)
         file.save(path_png)
 
@@ -174,26 +149,21 @@ def upload_label(tote_id):
 
 
 # ---------------------------
-# LABEL FETCH
+# DASHBOARD PNG FETCH
 # ---------------------------
 @app.route("/label/<tote_id>.png")
 def get_label(tote_id):
     path = os.path.join(LABEL_DIR, f"{tote_id}.png")
     if not os.path.exists(path):
         abort(404)
-
     return send_file(path, mimetype="image/png")
 
+
 # ---------------------------
-# API: Tote image for ESP32 clients
+# API: ESP32 asks for label update
 # ---------------------------
 @app.route("/api/tote/<tote_id>/image", methods=["GET"])
 def api_tote_image(tote_id):
-    """Small JSON for ESP32 clients.
-
-    Returns whether a label image exists for this tote and, if so,
-    an absolute URL to a BMP image that the ESP32 can download.
-    """
     bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
     if not os.path.exists(bmp_path):
         return jsonify({"update_available": False, "image_url": ""})
@@ -214,7 +184,5 @@ def get_label_raw(tote_id):
     return send_file(path, mimetype="image/bmp")
 
 
-
 if __name__ == "__main__":
-    # For local testing
     app.run(debug=True)

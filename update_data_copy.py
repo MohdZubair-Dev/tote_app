@@ -2,8 +2,8 @@ import requests
 import random
 import time
 
-#API = "https://tote-app.onrender.com/api/iot/update"
-API = "http://127.0.0.1:5000/api/iot/update"
+API = "https://tote-app.onrender.com/api/iot/update"
+#API = "http://127.0.0.1:5000/api/iot/update"
 TOTE_ID = "TOTE001"
 
 def random_payload():

@@ -3,7 +3,7 @@ import random
 import time
 
 #API = "https://tote-app.onrender.com/iot/update"   # or your deployed API URL
-API = "http://127.0.0.1:5000/api/iot/update"
+#API = "http://127.0.0.1:5000/api/iot/update"
 TOTE_ID = "TOTE001"
 
 def random_status(temp):
