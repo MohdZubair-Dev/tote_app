@@ -14,26 +14,6 @@ LABEL_DIR = os.path.join(app.root_path, "labels")
 os.makedirs(LABEL_DIR, exist_ok=True)
 
 # ----------------------------------------------------------------------
-# DISPLAY CONFIG PER TOTE
-#   - Edit this mapping based on which tote uses which panel.
-#   - 4.2" V2 : 400 x 300
-#   - 7.5" V2 : 800 x 480
-# ----------------------------------------------------------------------
-DISPLAY_CONFIG = {
-    "TOTE001": (400, 300),  # 4.2" V2 example
-    "TOTE002": (800, 480),  # 7.5" V2 example
-    # Add more:
-    # "TOTE003": (800, 480),
-    # "TOTE004": (400, 300),
-}
-
-
-def get_display_size_for_tote(tote_id: str):
-    """Return (width, height) for this tote's display."""
-    return DISPLAY_CONFIG.get(tote_id, (400, 300))  # default 4.2" if unknown
-
-
-# ----------------------------------------------------------------------
 # STATUS COMPUTATION
 # ----------------------------------------------------------------------
 def compute_status(temp, humidity, lux):
@@ -66,7 +46,7 @@ def compute_status(temp, humidity, lux):
 
 
 # ----------------------------------------------------------------------
-# DASHBOARD
+# DASHBOARD PAGE
 # ----------------------------------------------------------------------
 @app.route("/")
 def dashboard():
@@ -84,7 +64,7 @@ def iot_update():
 
     tote_id = data.get("tote_id") or data.get("id")
     if not tote_id:
-        return jsonify({"error": "tote_id is required"}), 400
+        return jsonify({"error": "tote_id missing"}), 400
 
     temp = data.get("temperature")
     humidity = data.get("humidity")
@@ -112,7 +92,7 @@ def iot_update():
 
 
 # ----------------------------------------------------------------------
-# LIVE DATA FOR DASHBOARD
+# DASHBOARD LIVE DATA
 # ----------------------------------------------------------------------
 @app.route("/iot/live")
 def live():
@@ -120,54 +100,35 @@ def live():
 
 
 # ----------------------------------------------------------------------
-# IMAGE PREP HELPERS
+# IMAGE PROCESS HELPERS
 # ----------------------------------------------------------------------
-def fit_and_sharpen_for_display(img: Image.Image, target_w: int, target_h: int):
-    """
-    - Keep aspect ratio
-    - Letterbox into target_w x target_h
-    - Convert to grayscale
-    - Apply a light sharpen
-    """
-    # Ensure RGB first
+def fit_and_sharpen(img, target_w, target_h):
     img = img.convert("RGB")
     src_w, src_h = img.size
 
-    # Compute scale to fit inside target while keeping aspect
     scale = min(target_w / src_w, target_h / src_h)
     new_w = int(src_w * scale)
     new_h = int(src_h * scale)
 
-    # High quality resize
-    img_resized = img.resize((new_w, new_h), Image.LANCZOS)
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
 
-    # Create white canvas and center the resized image
     canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
-    offset_x = (target_w - new_w) // 2
-    offset_y = (target_h - new_h) // 2
-    canvas.paste(img_resized, (offset_x, offset_y))
+    canvas.paste(resized, ((target_w - new_w)//2, (target_h - new_h)//2))
 
-    # Grayscale + sharpen a bit
-    gray = canvas.convert("L")
-    gray = gray.filter(ImageFilter.SHARPEN)
+    gray = canvas.convert("L").filter(ImageFilter.SHARPEN)
 
-    return canvas, gray
+    return gray
 
 
-def to_1bit_bmp(gray_img: Image.Image, threshold: int = 180):
-    """
-    Convert grayscale image to crisp 1-bit black/white using a fixed threshold.
-    """
-    bw = gray_img.point(lambda x: 0 if x < threshold else 255, mode="1")
-    return bw
+def to_1bit(gray_img, threshold):
+    return gray_img.point(lambda x: 0 if x < threshold else 255, "1")
 
 
 # ----------------------------------------------------------------------
-# LABEL UPLOAD (PNG + 1-BIT BMP PER DISPLAY RESOLUTION)
+# LABEL UPLOAD (CREATES 4.2 AND 7.5 VERSIONS AUTOMATICALLY)
 # ----------------------------------------------------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
-
     if "file" not in request.files:
         return jsonify({"error": "file missing"}), 400
 
@@ -175,40 +136,40 @@ def upload_label(tote_id):
     if not file or file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    filename_png = secure_filename(f"{tote_id}.png")
-    filename_bmp = secure_filename(f"{tote_id}.bmp")
-
-    path_png = os.path.join(LABEL_DIR, filename_png)
-    path_bmp = os.path.join(LABEL_DIR, filename_bmp)
-
-    target_w, target_h = get_display_size_for_tote(tote_id)
+    # Output files
+    path_png     = os.path.join(LABEL_DIR, f"{tote_id}.png")
+    path_4in2bmp = os.path.join(LABEL_DIR, f"{tote_id}_4in2.bmp")
+    path_7in5bmp = os.path.join(LABEL_DIR, f"{tote_id}_7in5.bmp")
 
     try:
         img = Image.open(file.stream)
 
-        # Prepare images for this tote's display
-        canvas_rgb, canvas_gray = fit_and_sharpen_for_display(img, target_w, target_h)
+        # Save PNG (dashboard)
+        img.convert("RGB").save(path_png, "PNG")
 
-        # Save PNG preview for dashboard
-        canvas_rgb.save(path_png, format="PNG")
+        # Target sizes for e-ink
+        TARGETS = [
+            ("4in2", 400, 300, 180, path_4in2bmp),
+            ("7in5", 800, 480, 170, path_7in5bmp),
+        ]
 
-        # Make crisp 1-bit BMP for e-ink
-        bw_1bit = to_1bit_bmp(canvas_gray)
-        bw_1bit.save(path_bmp, format="BMP")
+        for _, W, H, THRESH, outpath in TARGETS:
+            gray = fit_and_sharpen(img, W, H)
+            bw   = to_1bit(gray, THRESH)
+            bw.save(outpath, "BMP")
 
     except Exception as exc:
-        print("Error converting label:", exc)
-        file.seek(0)
-        file.save(path_png)
+        print("Upload fail:", exc)
+        return jsonify({"error": str(exc)}), 500
 
     return jsonify({"ok": True})
 
 
 # ----------------------------------------------------------------------
-# FETCH PNG FOR DASHBOARD
+# FETCH PNG (dashboard)
 # ----------------------------------------------------------------------
 @app.route("/label/<tote_id>.png")
-def get_label(tote_id):
+def get_label_png(tote_id):
     path = os.path.join(LABEL_DIR, f"{tote_id}.png")
     if not os.path.exists(path):
         abort(404)
@@ -216,31 +177,38 @@ def get_label(tote_id):
 
 
 # ----------------------------------------------------------------------
-# ESP32: IMAGE METADATA (WITH VERSIONING)
+# ESP32: IMAGE METADATA BASED ON PANEL TYPE
 # ----------------------------------------------------------------------
-@app.route("/api/tote/<tote_id>/image", methods=["GET"])
+@app.route("/api/tote/<tote_id>/image")
 def api_tote_image(tote_id):
-    bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
+
+    panel = request.args.get("panel", "4.2")
+
+    if panel == "7.5":
+        bmp_file = f"{tote_id}_7in5.bmp"
+    else:
+        bmp_file = f"{tote_id}_4in2.bmp"
+
+    bmp_path = os.path.join(LABEL_DIR, bmp_file)
 
     if not os.path.exists(bmp_path):
         return jsonify({"update_available": False, "image_url": ""})
 
     version = int(os.path.getmtime(bmp_path))
-    base = request.url_root.rstrip("/")
-    rel = f"/label_raw/{tote_id}.bmp?v={version}"
+    url = request.url_root.rstrip("/") + "/label_raw/" + bmp_file + f"?v={version}"
 
     return jsonify({
         "update_available": True,
-        "image_url": base + rel
+        "image_url": url
     })
 
 
 # ----------------------------------------------------------------------
-# ESP32: FETCH RAW BMP (1-BIT, CORRECT SIZE)
+# ESP32 FETCH RAW BMP
 # ----------------------------------------------------------------------
-@app.route("/label_raw/<tote_id>.bmp")
-def get_label_raw(tote_id):
-    path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
+@app.route("/label_raw/<filename>")
+def get_raw_bmp(filename):
+    path = os.path.join(LABEL_DIR, filename)
     if not os.path.exists(path):
         abort(404)
     return send_file(path, mimetype="image/bmp")
