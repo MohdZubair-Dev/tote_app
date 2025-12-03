@@ -5,13 +5,7 @@
   <title>IoT Tote Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <!-- Inter Font -->
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-    rel="stylesheet"
-  />
-
-  <!-- Tailwind CDN -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <script>
@@ -31,18 +25,12 @@
     }
   </script>
 
-  <!-- Leaflet CSS & JS for Map -->
+  <!-- Leaflet -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
   />
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin="">
-  </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 
 <body class="bg-gray-100 min-h-screen font-sans">
@@ -51,114 +39,59 @@
 <header class="flex justify-between items-center px-8 py-6 bg-white shadow">
   <div>
     <h1 class="text-3xl font-semibold text-gray-900">IoT Tote Dashboard</h1>
-    <p class="text-sm text-gray-500">
-      Live monitoring • API driven • Label control • Map tracking
-    </p>
+    <p class="text-sm text-gray-500">Live monitoring • GPS • Sensor data • Labels</p>
   </div>
-
-  <button id="refreshBtn"
-          class="px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800">
-    Refresh
-  </button>
+  <button id="refreshBtn" class="px-4 py-2 bg-gray-900 text-white rounded-lg">Refresh</button>
 </header>
 
 <main class="px-8 py-6 space-y-6">
 
-  <!-- KPI CARDS -->
-  <section id="kpiSection"
-           class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
+  <!-- KPI SECTION -->
+  <section id="kpiSection" class="grid grid-cols-2 md:grid-cols-4 gap-5"></section>
+
+  <!-- MAP SECTION -->
+  <section class="bg-white rounded-2xl shadow p-4">
+    <h2 class="text-lg font-semibold mb-2">Tote Locations</h2>
+    <div id="toteMap" class="w-full h-80 rounded-xl border"></div>
   </section>
 
-  <!-- MAP VIEW -->
-  <section id="mapSection"
-           class="bg-white rounded-2xl shadow p-4">
-    <div class="flex justify-between items-center mb-3">
-      <div>
-        <h2 class="text-lg font-semibold text-gray-900">Tote Locations</h2>
-        <p class="text-xs text-gray-500">Live map view of all active totes</p>
-      </div>
-      <p class="text-[0.65rem] text-gray-400">
-        Drag, zoom and click markers for more details
-      </p>
-    </div>
-    <div id="toteMap"
-         class="w-full h-80 md:h-96 rounded-2xl border border-gray-200 overflow-hidden">
-    </div>
-  </section>
-
-  <!-- FILTERS -->
-  <section id="filterSection"
-           class="bg-white rounded-2xl shadow p-4 flex flex-wrap items-center gap-4">
-    <input id="searchInput"
-           type="text"
-           placeholder="Search by ID, name, or location..."
-           class="flex-1 px-4 py-2 rounded-xl border focus:ring-2 focus:ring-indigo-500">
+  <!-- SEARCH -->
+  <section class="bg-white rounded-2xl shadow p-4">
+    <input id="searchInput" placeholder="Search totes..." class="px-4 py-2 rounded-xl border w-full">
   </section>
 
   <!-- TOTE CARDS -->
-  <section id="toteCards"
-           class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-  </section>
+  <section id="toteCards" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6"></section>
 
 </main>
 
-<!-- BACKDROP FOR MODAL -->
-<div id="modalBackdrop"
-     class="hidden fixed inset-0 bg-black bg-opacity-40 z-40"></div>
+<!-- MODAL BACKDROP -->
+<div id="modalBackdrop" class="hidden fixed inset-0 bg-black bg-opacity-40 z-40"></div>
 
 <!-- LABEL MODAL -->
-<div id="labelModal"
-     class="hidden fixed z-50 inset-0 flex items-center justify-center px-4">
+<div id="labelModal" class="hidden fixed z-50 inset-0 flex items-center justify-center px-4">
 
-  <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative border border-gray-200">
-
-    <button onclick="closeModal()"
-            class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl">✕</button>
-
+  <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl relative">
+    <button onclick="closeModal()" class="absolute top-3 right-3 text-gray-500 text-xl">✕</button>
     <h2 id="modalTitle" class="text-xl font-semibold mb-4">Label</h2>
 
-    <!-- CURRENT LABEL -->
-    <div class="mb-6">
-      <h3 class="text-sm font-medium mb-2 text-gray-700">Current Label</h3>
-
-      <div id="previewContainer"
-           class="w-full h-32 bg-gray-100 border rounded-lg flex flex-col items-center justify-center">
-        <img id="labelPreview"
-             src=""
-             class="max-h-24 object-contain mb-1 hidden">
-        <p id="noLabelMessage"
-           class="text-xs text-gray-500">
-          No label available
-        </p>
-      </div>
-
-      <a id="downloadBtn"
-         href="#"
-         class="inline-block mt-2 text-xs underline text-blue-700">
-        Download current label
-      </a>
+    <div id="previewContainer" class="w-full h-32 bg-gray-100 border rounded-lg flex items-center justify-center">
+      <img id="labelPreview" class="max-h-24 hidden">
+      <p id="noLabelMessage" class="text-xs text-gray-500">No label available</p>
     </div>
 
-    <!-- UPLOAD NEW LABEL -->
-    <div class="space-y-3">
-      <label class="text-sm font-medium text-gray-700">
-        Upload new PNG label
-      </label>
-      <input id="labelFile"
-             type="file"
-             accept="image/png"
-             class="w-full text-sm">
-      <button id="uploadBtn"
-              class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 w-full">
-        Upload
+    <a id="downloadBtn" href="#" class="underline text-sm text-blue-700 mt-2 inline-block">Download</a>
+
+    <div class="mt-3">
+      <input id="labelFile" type="file" accept="image/png" class="w-full text-sm">
+      <button id="uploadBtn" class="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg w-full">
+        Upload Label
       </button>
     </div>
 
   </div>
 </div>
 
-<!-- FRONTEND LOGIC -->
 <script src="/static/js/dashboard.js"></script>
-
 </body>
 </html>

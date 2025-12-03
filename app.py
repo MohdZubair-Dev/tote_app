@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, send_file, abort
 import os
 from werkzeug.utils import secure_filename
 from PIL import Image, ImageFilter
+import time
 
 app = Flask(__name__)
 
@@ -59,7 +60,6 @@ def dashboard():
 @app.route("/api/iot/update", methods=["POST"])
 def iot_update():
     data = request.get_json(force=True, silent=True)
-
     if not data:
         return jsonify({"error": "invalid JSON"}), 400
 
@@ -67,18 +67,18 @@ def iot_update():
     if not tote_id:
         return jsonify({"error": "tote_id missing"}), 400
 
-    # Extract fields exactly as ESP32 sends them
     temperature = data.get("temperature")
     humidity    = data.get("humidity")
     lux         = data.get("lux")
 
-    loc = data.get("location", {})
+    loc         = data.get("location", {})
     lat = loc.get("lat")
     lon = loc.get("lon")
 
-    status = compute_status(temperature, humidity, lux)
+    timestamp = data.get("timestamp") or int(time.time())
+    status    = compute_status(temperature, humidity, lux)
 
-    # ---- STORE IN THE CORRECT FORMAT THE DASHBOARD USES ----
+    # Store EXACTLY the structure dashboard expects
     TOTES[tote_id] = {
         "id": tote_id,
         "name": tote_id,
@@ -89,14 +89,11 @@ def iot_update():
         "location": {
             "lat": lat,
             "lon": lon
-        }
+        },
+        "timestamp": timestamp
     }
 
-    return jsonify({
-        "ok": True,
-        "updated": TOTES[tote_id]
-    })
-
+    return jsonify({"ok": True, "updated": TOTES[tote_id]})
 
 
 # ----------------------------------------------------------------------
@@ -108,7 +105,7 @@ def live():
 
 
 # ----------------------------------------------------------------------
-# IMAGE PROCESS HELPERS
+# E-INK IMAGE CODE (unchanged)
 # ----------------------------------------------------------------------
 def fit_and_sharpen(img, target_w, target_h):
     img = img.convert("RGB")
@@ -124,7 +121,6 @@ def fit_and_sharpen(img, target_w, target_h):
     canvas.paste(resized, ((target_w - new_w)//2, (target_h - new_h)//2))
 
     gray = canvas.convert("L").filter(ImageFilter.SHARPEN)
-
     return gray
 
 
@@ -132,9 +128,6 @@ def to_1bit(gray_img, threshold):
     return gray_img.point(lambda x: 0 if x < threshold else 255, "1")
 
 
-# ----------------------------------------------------------------------
-# LABEL UPLOAD (CREATES 4.2 AND 7.5 VERSIONS AUTOMATICALLY)
-# ----------------------------------------------------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
     if "file" not in request.files:
@@ -144,18 +137,14 @@ def upload_label(tote_id):
     if not file or file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    # Output files
     path_png     = os.path.join(LABEL_DIR, f"{tote_id}.png")
     path_4in2bmp = os.path.join(LABEL_DIR, f"{tote_id}_4in2.bmp")
     path_7in5bmp = os.path.join(LABEL_DIR, f"{tote_id}_7in5.bmp")
 
     try:
         img = Image.open(file.stream)
-
-        # Save PNG (dashboard)
         img.convert("RGB").save(path_png, "PNG")
 
-        # Target sizes for e-ink
         TARGETS = [
             ("4in2", 400, 300, 180, path_4in2bmp),
             ("7in5", 800, 480, 170, path_7in5bmp),
@@ -167,15 +156,11 @@ def upload_label(tote_id):
             bw.save(outpath, "BMP")
 
     except Exception as exc:
-        print("Upload fail:", exc)
         return jsonify({"error": str(exc)}), 500
 
     return jsonify({"ok": True})
 
 
-# ----------------------------------------------------------------------
-# FETCH PNG (dashboard)
-# ----------------------------------------------------------------------
 @app.route("/label/<tote_id>.png")
 def get_label_png(tote_id):
     path = os.path.join(LABEL_DIR, f"{tote_id}.png")
@@ -184,12 +169,8 @@ def get_label_png(tote_id):
     return send_file(path, mimetype="image/png")
 
 
-# ----------------------------------------------------------------------
-# ESP32: IMAGE METADATA BASED ON PANEL TYPE
-# ----------------------------------------------------------------------
 @app.route("/api/tote/<tote_id>/image")
 def api_tote_image(tote_id):
-
     panel = request.args.get("panel", "4.2")
 
     if panel == "7.5":
@@ -211,9 +192,6 @@ def api_tote_image(tote_id):
     })
 
 
-# ----------------------------------------------------------------------
-# ESP32 FETCH RAW BMP
-# ----------------------------------------------------------------------
 @app.route("/label_raw/<filename>")
 def get_raw_bmp(filename):
     path = os.path.join(LABEL_DIR, filename)
@@ -222,8 +200,5 @@ def get_raw_bmp(filename):
     return send_file(path, mimetype="image/bmp")
 
 
-# ----------------------------------------------------------------------
-# MAIN
-# ----------------------------------------------------------------------
 if __name__ == "__main__":
     app.run(debug=True)
