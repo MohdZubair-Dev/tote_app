@@ -59,6 +59,7 @@ def dashboard():
 @app.route("/api/iot/update", methods=["POST"])
 def iot_update():
     data = request.get_json(force=True, silent=True)
+
     if not data:
         return jsonify({"error": "invalid JSON"}), 400
 
@@ -66,29 +67,36 @@ def iot_update():
     if not tote_id:
         return jsonify({"error": "tote_id missing"}), 400
 
-    temp = data.get("temperature")
-    humidity = data.get("humidity")
-    lux = data.get("lux")
+    # Extract fields exactly as ESP32 sends them
+    temperature = data.get("temperature")
+    humidity    = data.get("humidity")
+    lux         = data.get("lux")
 
-    loc = data.get("location", {}) or {}
+    loc = data.get("location", {})
     lat = loc.get("lat")
     lon = loc.get("lon")
 
-    location_label = data.get("location_label") or "Unknown"
-    status = data.get("status") or compute_status(temp, humidity, lux)
+    status = compute_status(temperature, humidity, lux)
 
+    # ---- STORE IN THE CORRECT FORMAT THE DASHBOARD USES ----
     TOTES[tote_id] = {
         "id": tote_id,
         "name": tote_id,
-        "temp": temp,
+        "temperature": temperature,
         "humidity": humidity,
         "lux": lux,
         "status": status,
-        "location": location_label,
-        "coords": f"{lat},{lon}" if lat is not None and lon is not None else ""
+        "location": {
+            "lat": lat,
+            "lon": lon
+        }
     }
 
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True,
+        "updated": TOTES[tote_id]
+    })
+
 
 
 # ----------------------------------------------------------------------
