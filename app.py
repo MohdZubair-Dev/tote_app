@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_file, abort
 import os
 from werkzeug.utils import secure_filename
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -137,13 +138,38 @@ def live():
 # ---------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
+    """Upload a label image for a tote.
+
+    - Saves a PNG version for the web dashboard at /label/<tote_id>.png
+    - Saves a BMP version for ESP32 clients at   /label_raw/<tote_id>.bmp
+    """
     if "file" not in request.files:
         return jsonify({"error": "file missing"}), 400
 
-    f = request.files["file"]
-    filename = secure_filename(f"{tote_id}.png")
-    path = os.path.join(LABEL_DIR, filename)
-    f.save(path)
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"error": "empty filename"}), 400
+
+    filename_png = secure_filename(f"{tote_id}.png")
+    filename_bmp = secure_filename(f"{tote_id}.bmp")
+    path_png = os.path.join(LABEL_DIR, filename_png)
+    path_bmp = os.path.join(LABEL_DIR, filename_bmp)
+
+    try:
+        # Normalize and convert to RGB so we have a clean base image
+        img = Image.open(file.stream)
+        img = img.convert("RGB")
+
+        # Save PNG for the dashboard / browser
+        img.save(path_png, format="PNG")
+
+        # Save BMP (uncompressed) for ESP32 side to decode easily
+        img.save(path_bmp, format="BMP")
+    except Exception as exc:
+        # Fallback: just save what we got as PNG
+        file.seek(0)
+        file.save(path_png)
+
     return jsonify({"ok": True})
 
 
@@ -157,6 +183,36 @@ def get_label(tote_id):
         abort(404)
 
     return send_file(path, mimetype="image/png")
+
+# ---------------------------
+# API: Tote image for ESP32 clients
+# ---------------------------
+@app.route("/api/tote/<tote_id>/image", methods=["GET"])
+def api_tote_image(tote_id):
+    """Small JSON for ESP32 clients.
+
+    Returns whether a label image exists for this tote and, if so,
+    an absolute URL to a BMP image that the ESP32 can download.
+    """
+    bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
+    if not os.path.exists(bmp_path):
+        return jsonify({"update_available": False, "image_url": ""})
+
+    base = request.url_root.rstrip("/")
+    rel = f"/label_raw/{tote_id}.bmp"
+    return jsonify({"update_available": True, "image_url": base + rel})
+
+
+# ---------------------------
+# RAW BMP FETCH FOR ESP32
+# ---------------------------
+@app.route("/label_raw/<tote_id>.bmp")
+def get_label_raw(tote_id):
+    path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, mimetype="image/bmp")
+
 
 
 if __name__ == "__main__":
