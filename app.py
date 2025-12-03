@@ -169,26 +169,27 @@ def get_label_png(tote_id):
     return send_file(path, mimetype="image/png")
 
 
-@app.route("/api/tote/<tote_id>/image")
+@app.route("/api/tote/<tote_id>/image", methods=["GET"])
 def api_tote_image(tote_id):
-    panel = request.args.get("panel", "4.2")
-
-    if panel == "7.5":
-        bmp_file = f"{tote_id}_7in5.bmp"
-    else:
-        bmp_file = f"{tote_id}_4in2.bmp"
-
-    bmp_path = os.path.join(LABEL_DIR, bmp_file)
+    bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
 
     if not os.path.exists(bmp_path):
-        return jsonify({"update_available": False, "image_url": ""})
+        return jsonify({
+            "update_available": False,
+            "image_url": "",
+            "version": ""
+        })
 
-    version = int(os.path.getmtime(bmp_path))
-    url = request.url_root.rstrip("/") + "/label_raw/" + bmp_file + f"?v={version}"
+    # Version = last modified timestamp
+    version = str(int(os.path.getmtime(bmp_path)))
+
+    base = request.url_root.rstrip("/")
+    rel = f"/label_raw/{tote_id}.bmp"
 
     return jsonify({
         "update_available": True,
-        "image_url": url
+        "image_url": base + rel + f"?v={version}",
+        "version": version
     })
 
 
