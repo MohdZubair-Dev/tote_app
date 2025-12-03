@@ -1,166 +1,137 @@
 from flask import Flask, render_template, request, jsonify, send_file, abort
 import os
 from werkzeug.utils import secure_filename
-from PIL import Image, ImageFilter
-import time
+from PIL import Image, ImageOps, ImageEnhance
+from datetime import datetime
 
 app = Flask(__name__)
 
-# ----------------------------------------------------------------------
-# IN-MEMORY TOTE STATE
-# ----------------------------------------------------------------------
-TOTES = {}
-
+# ---------------------------
+# STORAGE CONFIG
+# ---------------------------
+TOTES = {}  # live data
 LABEL_DIR = os.path.join(app.root_path, "labels")
 os.makedirs(LABEL_DIR, exist_ok=True)
 
-# ----------------------------------------------------------------------
-# STATUS COMPUTATION
-# ----------------------------------------------------------------------
-def compute_status(temp, humidity, lux):
-    try:
-        if temp is not None:
-            t = float(temp)
-            if t < -5 or t > 60:
-                return "critical"
-            if t < 0 or t > 25:
-                return "warning"
 
-        if humidity is not None:
-            h = float(humidity)
-            if h > 90:
-                return "critical"
-            if h > 70:
-                return "warning"
+# ---------------------------
+# IMAGE PROCESSING
+# ---------------------------
+def process_image(img, size):
+    # Convert to grayscale
+    img = img.convert("L")
 
-        if lux is not None:
-            lx = float(lux)
-            if lx > 1000:
-                return "critical"
-            if lx >= 300:
-                return "warning"
+    # Increase clarity
+    img = ImageEnhance.Contrast(img).enhance(1.8)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
 
-        return "normal"
+    # Resize to panel size
+    img = ImageOps.fit(img, size, method=Image.LANCZOS)
 
-    except Exception:
-        return "normal"
+    # Convert to 1-bit BW
+    img = img.point(lambda x: 0 if x < 150 else 255, "1")
+
+    return img
 
 
-# ----------------------------------------------------------------------
-# DASHBOARD PAGE
-# ----------------------------------------------------------------------
+# ---------------------------
+# DASHBOARD UI
+# ---------------------------
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html")
 
 
-# ----------------------------------------------------------------------
-# DEVICE UPDATE API
-# ----------------------------------------------------------------------
+# ---------------------------
+# ESP → SERVER: LIVE UPDATE
+# ---------------------------
 @app.route("/api/iot/update", methods=["POST"])
 def iot_update():
-    data = request.get_json(force=True, silent=True)
+    data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "invalid JSON"}), 400
 
-    tote_id = data.get("tote_id") or data.get("id")
+    tote_id = data.get("tote_id")
     if not tote_id:
         return jsonify({"error": "tote_id missing"}), 400
 
-    temperature = data.get("temperature")
-    humidity    = data.get("humidity")
-    lux         = data.get("lux")
+    temp = data.get("temperature")
+    humidity = data.get("humidity")
+    lux = data.get("lux")
 
-    loc         = data.get("location", {})
-    lat = loc.get("lat")
-    lon = loc.get("lon")
+    loc_block = data.get("location", {})
+    lat = loc_block.get("lat")
+    lon = loc_block.get("lon")
 
-    timestamp = data.get("timestamp") or int(time.time())
-    status    = compute_status(temperature, humidity, lux)
+    location_label = data.get("location_label", "Unknown")
+    status = data.get("status", "normal")
 
-    # Store EXACTLY the structure dashboard expects
+    # SERVER REAL-TIME TIMESTAMP
+    last_updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     TOTES[tote_id] = {
         "id": tote_id,
-        "name": tote_id,
-        "temperature": temperature,
+        "temperature": temp,
         "humidity": humidity,
         "lux": lux,
         "status": status,
+
+        # For card display and map
         "location": {
             "lat": lat,
-            "lon": lon
+            "lon": lon,
+            "label": location_label
         },
-        "timestamp": timestamp
+
+        # Backward compatibility for your card code
+        "coords": f"{lat},{lon}" if lat and lon else "",
+
+        # For "Last Updated"
+        "last_updated": last_updated
     }
 
-    return jsonify({"ok": True, "updated": TOTES[tote_id]})
+    return jsonify({"ok": True})
 
 
-# ----------------------------------------------------------------------
-# DASHBOARD LIVE DATA
-# ----------------------------------------------------------------------
+# ---------------------------
+# DASHBOARD → FETCH LIVE DATA
+# ---------------------------
 @app.route("/iot/live")
 def live():
     return jsonify(TOTES)
 
 
-# ----------------------------------------------------------------------
-# E-INK IMAGE CODE (unchanged)
-# ----------------------------------------------------------------------
-def fit_and_sharpen(img, target_w, target_h):
-    img = img.convert("RGB")
-    src_w, src_h = img.size
-
-    scale = min(target_w / src_w, target_h / src_h)
-    new_w = int(src_w * scale)
-    new_h = int(src_h * scale)
-
-    resized = img.resize((new_w, new_h), Image.LANCZOS)
-
-    canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
-    canvas.paste(resized, ((target_w - new_w)//2, (target_h - new_h)//2))
-
-    gray = canvas.convert("L").filter(ImageFilter.SHARPEN)
-    return gray
-
-
-def to_1bit(gray_img, threshold):
-    return gray_img.point(lambda x: 0 if x < threshold else 255, "1")
-
-
+# ---------------------------
+# UPLOAD LABEL (FOR ESP + DASHBOARD)
+# ---------------------------
 @app.route("/upload_label/<tote_id>", methods=["POST"])
 def upload_label(tote_id):
     if "file" not in request.files:
         return jsonify({"error": "file missing"}), 400
 
     file = request.files["file"]
-    if not file or file.filename == "":
+    if file.filename == "":
         return jsonify({"error": "empty filename"}), 400
 
-    path_png     = os.path.join(LABEL_DIR, f"{tote_id}.png")
-    path_4in2bmp = os.path.join(LABEL_DIR, f"{tote_id}_4in2.bmp")
-    path_7in5bmp = os.path.join(LABEL_DIR, f"{tote_id}_7in5.bmp")
+    img = Image.open(file.stream).convert("RGB")
 
-    try:
-        img = Image.open(file.stream)
-        img.convert("RGB").save(path_png, "PNG")
+    # Save PNG (for dashboard)
+    png_path = os.path.join(LABEL_DIR, f"{tote_id}.png")
+    img.save(png_path, "PNG")
 
-        TARGETS = [
-            ("4in2", 400, 300, 180, path_4in2bmp),
-            ("7in5", 800, 480, 170, path_7in5bmp),
-        ]
+    # Save BMP for ESP
+    bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
 
-        for _, W, H, THRESH, outpath in TARGETS:
-            gray = fit_and_sharpen(img, W, H)
-            bw   = to_1bit(gray, THRESH)
-            bw.save(outpath, "BMP")
-
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    # 800×480 for 7.5-inch ESP panels
+    processed = process_image(img, (800, 480))
+    processed.save(bmp_path, "BMP")
 
     return jsonify({"ok": True})
 
 
+# ---------------------------
+# SERVE LABEL PNG
+# ---------------------------
 @app.route("/label/<tote_id>.png")
 def get_label_png(tote_id):
     path = os.path.join(LABEL_DIR, f"{tote_id}.png")
@@ -169,6 +140,20 @@ def get_label_png(tote_id):
     return send_file(path, mimetype="image/png")
 
 
+# ---------------------------
+# SERVE RAW BMP FOR ESP
+# ---------------------------
+@app.route("/label_raw/<tote_id>.bmp")
+def get_label_raw(tote_id):
+    path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
+    if not os.path.exists(path):
+        abort(404)
+    return send_file(path, mimetype="image/bmp")
+
+
+# ---------------------------
+# ESP → FETCH LATEST LABEL VERSION
+# ---------------------------
 @app.route("/api/tote/<tote_id>/image", methods=["GET"])
 def api_tote_image(tote_id):
     bmp_path = os.path.join(LABEL_DIR, f"{tote_id}.bmp")
@@ -180,7 +165,6 @@ def api_tote_image(tote_id):
             "version": ""
         })
 
-    # Version = last modified timestamp
     version = str(int(os.path.getmtime(bmp_path)))
 
     base = request.url_root.rstrip("/")
@@ -193,13 +177,8 @@ def api_tote_image(tote_id):
     })
 
 
-@app.route("/label_raw/<filename>")
-def get_raw_bmp(filename):
-    path = os.path.join(LABEL_DIR, filename)
-    if not os.path.exists(path):
-        abort(404)
-    return send_file(path, mimetype="image/bmp")
-
-
+# ---------------------------
+# RUN (LOCAL DEV ONLY)
+# ---------------------------
 if __name__ == "__main__":
     app.run(debug=True)

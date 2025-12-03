@@ -2,7 +2,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let totes = {};
   let activeId = null;
-  let modalOpen = false;
 
   const cardsSection = document.getElementById("toteCards");
   const kpiSection = document.getElementById("kpiSection");
@@ -24,17 +23,27 @@ document.addEventListener("DOMContentLoaded", () => {
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
   function updateMap() {
+    const bounds = [];
+
     Object.values(totes).forEach(t => {
       const lat = t.location?.lat;
       const lon = t.location?.lon;
+
       if (!lat || !lon) return;
 
+      const pos = [lat, lon];
+      bounds.push(pos);
+
       if (!toteMarkers[t.id]) {
-        toteMarkers[t.id] = L.marker([lat, lon]).addTo(map);
+        toteMarkers[t.id] = L.marker(pos).addTo(map);
       } else {
-        toteMarkers[t.id].setLatLng([lat, lon]);
+        toteMarkers[t.id].setLatLng(pos);
       }
     });
+
+    if (bounds.length > 0) {
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
   }
 
   /* ---------------- LIVE DATA ---------------- */
@@ -56,8 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const values = Object.values(totes);
 
     const normal = values.filter(t => t.status === "normal").length;
-    const warn = values.filter(t => t.status === "warning").length;
-    const crit = values.filter(t => t.status === "critical").length;
+    const warning = values.filter(t => t.status === "warning").length;
+    const critical = values.filter(t => t.status === "critical").length;
 
     kpiSection.innerHTML = `
       <div class="bg-white p-4 rounded-2xl shadow">
@@ -70,11 +79,11 @@ document.addEventListener("DOMContentLoaded", () => {
       </div>
       <div class="bg-white p-4 rounded-2xl shadow">
         <p class="text-xs text-gray-500">Warning</p>
-        <p class="text-2xl font-semibold text-amber-600">${warn}</p>
+        <p class="text-2xl font-semibold text-amber-600">${warning}</p>
       </div>
       <div class="bg-white p-4 rounded-2xl shadow">
         <p class="text-xs text-gray-500">Critical</p>
-        <p class="text-2xl font-semibold text-red-600">${crit}</p>
+        <p class="text-2xl font-semibold text-red-600">${critical}</p>
       </div>
     `;
   }
@@ -87,16 +96,14 @@ document.addEventListener("DOMContentLoaded", () => {
     cardsSection.innerHTML = "";
 
     values
-      .filter(t => {
-        return (
-          t.id.toLowerCase().includes(query) ||
-          (t.location?.label || "").toLowerCase().includes(query)
-        );
-      })
+      .filter(t =>
+        t.id.toLowerCase().includes(query) ||
+        (t.location?.label || "").toLowerCase().includes(query)
+      )
       .forEach(t => {
         const lat = t.location?.lat ?? "";
         const lon = t.location?.lon ?? "";
-        const ts = t.timestamp ? new Date(t.timestamp * 1000).toLocaleString() : "—";
+        const ts = t.last_updated || "—";
 
         let statusColor = "bg-green-100 text-green-700";
         if (t.status === "warning") statusColor = "bg-amber-100 text-amber-700";
@@ -133,8 +140,9 @@ document.addEventListener("DOMContentLoaded", () => {
               <p class="text-sm">${lat}, ${lon}</p>
               ${
                 lat && lon
-                  ? `<a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank"
-                       class="text-xs underline text-blue-700">Open in Maps</a>`
+                  ? `<a href="https://www.google.com/maps?q=${lat},${lon}" 
+                       target="_blank" class="text-xs underline text-blue-700">
+                       Open in Maps</a>`
                   : ""
               }
             </div>
@@ -150,16 +158,16 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
-  /* ---------------- LABEL MODAL ---------------- */
+  /* ---------------- MODAL ---------------- */
   window.openModal = function (id) {
     activeId = id;
-    modalOpen = true;
 
     labelPreview.classList.add("hidden");
     noLabelMessage.classList.remove("hidden");
 
     const url = `/label/${id}.png?cb=${Date.now()}`;
     labelPreview.src = url;
+
     labelPreview.onload = () => {
       labelPreview.classList.remove("hidden");
       noLabelMessage.classList.add("hidden");
@@ -172,14 +180,13 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   window.closeModal = function () {
-    modalOpen = false;
     modal.classList.add("hidden");
     backdrop.classList.add("hidden");
   };
 
   uploadBtn.addEventListener("click", async () => {
     const file = labelFileInput.files[0];
-    if (!file) return alert("Select a PNG file first");
+    if (!file) return alert("Select a PNG first");
 
     const fd = new FormData();
     fd.append("file", file);
